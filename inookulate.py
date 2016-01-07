@@ -10,8 +10,12 @@ from xml.etree import ElementTree
 import zipfile
 import shutil
 import getpass
+import sys
 
 class NotAuthenticatedError(Exception):
+    pass
+
+class ServerError(Exception):
     pass
 
 class License:
@@ -235,6 +239,10 @@ def get_license(token, id):
         item_path = './Products/item'
         item = root.find(item_path)
 
+        error_msg = item.find('./error').get('errorDetails')
+        if error_msg != "":
+            raise ServerError(error_msg)
+
         license = License()
         license.download_url = item.find('./eBookUrl').text
         license.info_url = item.find('./infoDocUrl').text
@@ -272,7 +280,11 @@ for id, title in sorted(library.items(), key=lambda x: x[1].lower()):
     print('{:<11d} {}'.format(id, title))
 
 id = int(input('ID to download: '))
-license = get_license(token, id)
+try:
+    license = get_license(token, id)
+except ServerError as e:
+    print('Server returned error: {}'.format(e))
+    sys.exit(1)
 
 path = str(id) + '.epub'
 print('Saving {} as {}...'.format(license.download_url, path))
