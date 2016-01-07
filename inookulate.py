@@ -269,6 +269,33 @@ def save_file(token, url, id, path):
     with urllib.request.urlopen(request) as response, open(path, 'wb') as out:
         shutil.copyfileobj(response, out);
 
+def download_book(token, id, path=None):
+    """High-level function to download the book with the given delivery ID.
+
+    Uses get_license() and save_file() to save the given book at the given path.
+    If the book is an encrypted EPUB, rights.xml is added to the archive. If
+    a path is not given, one is automatically determined based on the title and
+    the format of the book. This is the recommended usage. Returns the path to
+    which the book was downloaded.
+    """
+    license = get_license(token, id)
+
+    format = urllib.parse.urlparse(license.download_url).path.rsplit('.', 1)[1]
+    path = '{}.{}'.format(str(id), format)
+
+    print('Saving {} as {}...'.format(license.download_url, path))
+    save_file(token, license.download_url, id, path)
+
+    if format != 'epub':
+        return
+
+    with zipfile.ZipFile(path, 'a') as epub:
+        if 'META-INF/encryption.xml' in epub.namelist():
+            epub.writestr('META-INF/rights.xml', license.rights_xml.encode())
+            print('Added rights.xml to encrypted EPUB')
+        else:
+            print('EPUB is not encrypted')
+
 
 token = AuthenticationToken('cookies')
 if not token.authenticated:
@@ -284,20 +311,7 @@ for id, title in sorted(library.items(), key=lambda x: x[1].lower()):
 
 id = int(input('ID to download: '))
 try:
-    license = get_license(token, id)
+    download_book(token, id)
 except ServerError as e:
     print('Server returned error: {}'.format(e))
     sys.exit(1)
-
-path = str(id) + '.epub'
-print('Saving {} as {}...'.format(license.download_url, path))
-save_file(token, license.download_url, id, path)
-
-with zipfile.ZipFile(path, 'a') as epub:
-    if 'META-INF/encryption.xml' in epub.namelist():
-        epub.writestr('META-INF/rights.xml', license.rights_xml.encode())
-        print('Added rights.xml to encrypted EPUB')
-    else:
-        print('EPUB is not encrypted')
-
-#cchash = get_cchash()
