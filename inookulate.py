@@ -21,6 +21,63 @@ class AuthenticationToken:
     def __init__(self, filename='cookies'):
         self.authenticated = False
         self.cookies = http.cookiejar.MozillaCookieJar(filename)
+        self.load()
+
+    def authenticate(self, email, password):
+        """Use the given username and password to authenticate with BN.
+
+        Returns boolean indicating success. If successful, the authentication
+        token is updated with the new data.
+        """
+        url = 'https://cart2.barnesandnoble.com/services/service.asp?service=1'
+        post_values = [
+            ('emailAddress', email),
+            ('UIAction', 'signIn'),
+            ('acctPassword', password),
+            ('stage', 'signIn'),
+            ]
+
+        post_data = urllib.parse.urlencode(post_values).encode()
+        request = urllib.request.Request(url, post_data)
+        prepare_request(request, self)
+
+        with urllib.request.urlopen(request) as response:
+            root = ElementTree.fromstring(response.read())
+
+            status_path = "./stateData/data[@name='signedIn']"
+            status = bool(int(root.find(status_path).text))
+
+            if status:
+                self.authenticated = True
+                self.cookies.extract_cookies(response, request)
+                self.save()
+
+            return status
+
+    def update_state(self):
+        """Check to see if the token is authenticated.
+
+        Updates the authenticated boolean accordingly. As a user of the class,
+        you should not need to call this. It will automatically be called as
+        needed to keep the authenticated variable up-to-date.
+        """
+        url = 'https://cart2.barnesandnoble.com/services/service.asp?service=1'
+        post_values = [
+            ('stage', 'signIn'),
+            ]
+
+        post_data = urllib.parse.urlencode(post_values).encode()
+        request = urllib.request.Request(url, post_data)
+        prepare_request(request, self)
+
+        with urllib.request.urlopen(request) as response:
+            root = ElementTree.fromstring(response.read())
+
+            status_path = "./stateData/data[@name='signedIn']"
+            status = bool(int(root.find(status_path).text))
+
+            self.authenticated = status
+            return status
 
     def save(self, filename=None):
         """Save the authentication token to a file.
@@ -37,7 +94,7 @@ class AuthenticationToken:
         """
         try:
             self.cookies.load(ignore_discard=True, filename=filename)
-            self.authenticated = True
+            self.update_state()
         except OSError:
             pass
 
@@ -51,40 +108,7 @@ def prepare_request(request, token=None):
             'BN ClientAPI Java/1.0.0.0 (bravo;bravo;1.5.0;P001000021)')
 
     if token is not None:
-        if not token.authenticated:
-            raise NotAuthenticatedError
-
         token.cookies.add_cookie_header(request)
-
-def authenticate(token, email, password):
-    """Use the given username and password to authenticate to BN.
-
-    Returns boolean indicating success. If successful, the given authentication
-    token is updated to reflect the new state.
-    """
-    url = 'https://cart2.barnesandnoble.com/services/service.asp?service=1'
-    post_values = [
-        ('emailAddress', email),
-        ('UIAction', 'signIn'),
-        ('acctPassword', password),
-        ('stage', 'signIn'),
-        ]
-
-    post_data = urllib.parse.urlencode(post_values).encode()
-    request = urllib.request.Request(url, post_data)
-    prepare_request(request)
-
-    with urllib.request.urlopen(request) as response:
-        root = ElementTree.fromstring(response.read())
-
-        status_path = "./stateData/data[@name='signedIn']"
-        status = bool(int(root.find(status_path).text))
-
-        if status:
-            token.authenticated = True
-            token.cookies.extract_cookies(response, request)
-
-        return status
 
 def log_in_with_prompt(token):
     """Complete a full login flow, prompting the user for credentials.
@@ -96,10 +120,8 @@ def log_in_with_prompt(token):
         email = input('Email: ')
         password = getpass.getpass('Password: ')
 
-        if not authenticate(token, email, password):
+        if not token.authenticate(email, password):
             print('Login failed. Please try again')
-
-    token.save()
 
 def get_cchash(token):
     """Retrieve the user's credit card hash used for EPUB encryption.
@@ -107,6 +129,9 @@ def get_cchash(token):
     Requires login. Returned string is the Base64-encoded hash, suitable
     for use with tools like ignobleepub.
     """
+    if not token.authenticated:
+        raise NotAuthenticatedError
+
     url = 'https://cart4.barnesandnoble.com/services/service.aspx?service=1'
     post_values = [
         ('schema', '1'),
@@ -133,6 +158,9 @@ def get_library(token):
     Requires login. Returns a dictionary with delivery IDs as keys and book
     titles as values.
     """
+    if not token.authenticated:
+        raise NotAuthenticatedError
+
     url = 'http://sync.barnesandnoble.com/sync/001/Default.aspx'
     post_data = """<?xml version="1.0" encoding="utf-8"?>
 <SyncML>
@@ -192,6 +220,9 @@ def get_license(token, id):
     Requires login. Returns a License object containing the string properties
     download_url, info_url, and rights_xml.
     """
+    if not token.authenticated:
+        raise NotAuthenticatedError
+
     url = 'http://edelivery.barnesandnoble.com/EDS/LicenseService.svc/GetLicense2/{}/epub'
     url = url.format(id)
 
@@ -212,7 +243,13 @@ def get_license(token, id):
         return license
 
 def save_file(token, url, id, path):
-    """Download book from given URL with given ID to given path."""
+    """Download book from given URL with given ID to given path.
+
+    Requires login.
+    """
+    if not token.authenticated:
+        raise NotAuthenticatedError
+
     request = urllib.request.Request(url)
     request.add_header('BN-Environment', 'Backend')
     request.add_header('BN-Item-ID', str(id))
@@ -223,7 +260,7 @@ def save_file(token, url, id, path):
 
 
 token = AuthenticationToken('cookies')
-if not token.load():
+if not token.authenticated:
     print('Please log in to retrieve a book')
     log_in_with_prompt(token)
 
