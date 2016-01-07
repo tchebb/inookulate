@@ -22,6 +22,9 @@ class License:
     pass
 
 class AuthenticationToken:
+    auth_url = 'https://cart2.barnesandnoble.com/services/service.asp?service=1'
+    auth_state_path = "./stateData/data[@name='signedIn']"
+
     def __init__(self, filename='cookies'):
         self.authenticated = False
         self.cookies = http.cookiejar.MozillaCookieJar(filename)
@@ -33,7 +36,6 @@ class AuthenticationToken:
         Returns boolean indicating success. If successful, the authentication
         token is updated with the new data.
         """
-        url = 'https://cart2.barnesandnoble.com/services/service.asp?service=1'
         post_values = [
             ('emailAddress', email),
             ('UIAction', 'signIn'),
@@ -42,14 +44,13 @@ class AuthenticationToken:
             ]
 
         post_data = urllib.parse.urlencode(post_values).encode()
-        request = urllib.request.Request(url, post_data)
+        request = urllib.request.Request(self.auth_url, post_data)
         prepare_request(request, self)
 
         with urllib.request.urlopen(request) as response:
             root = ElementTree.fromstring(response.read())
 
-            status_path = "./stateData/data[@name='signedIn']"
-            status = bool(int(root.find(status_path).text))
+            status = bool(int(root.find(self.auth_state_path).text))
 
             if status:
                 self.authenticated = True
@@ -65,20 +66,18 @@ class AuthenticationToken:
         you should not need to call this. It will automatically be called as
         needed to keep the authenticated variable up-to-date.
         """
-        url = 'https://cart2.barnesandnoble.com/services/service.asp?service=1'
         post_values = [
             ('stage', 'signIn'),
             ]
 
         post_data = urllib.parse.urlencode(post_values).encode()
-        request = urllib.request.Request(url, post_data)
+        request = urllib.request.Request(self.auth_url, post_data)
         prepare_request(request, self)
 
         with urllib.request.urlopen(request) as response:
             root = ElementTree.fromstring(response.read())
 
-            status_path = "./stateData/data[@name='signedIn']"
-            status = bool(int(root.find(status_path).text))
+            status = bool(int(root.find(self.auth_state_path).text))
 
             self.authenticated = status
             return status
