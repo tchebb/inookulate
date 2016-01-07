@@ -14,6 +14,9 @@ import getpass
 class NotAuthenticatedError(Exception):
     pass
 
+class License:
+    pass
+
 class AuthenticationToken:
     def __init__(self, filename='cookies'):
         self.authenticated = False
@@ -165,7 +168,7 @@ def get_library(token):
   </SyncBody>
 </SyncML>
 """.encode()
-    
+
     request = urllib.request.Request(url, post_data)
     request.add_header('Content-Type', 'application/vnd.syncml+xml')
     prepare_request(request, token)
@@ -182,9 +185,6 @@ def get_library(token):
             books[id] = title
 
         return books
-
-class License:
-    pass
 
 def get_license(token, id):
     """Retrieve information including the EPUB URL and rights.xml of a book.
