@@ -86,6 +86,8 @@ class AuthenticationToken:
         """Save the authentication token to a file.
 
         Uses the filename passed to the constructor if no filename is given.
+        You most likely do not need to call this directly, as the file passed
+        to the constructor is automatically kept up-to-date.
         """
         self.cookies.save(ignore_discard=True, filename=filename)
 
@@ -94,6 +96,8 @@ class AuthenticationToken:
 
         Uses the filename passed to the constructor if no filename is given.
         Returns a boolean indicating whether or not a valid token was loaded.
+        You most likely do not need to call this directly, as the file passed
+        to the constructor is automatically loaded.
         """
         try:
             self.cookies.load(ignore_discard=True, filename=filename)
