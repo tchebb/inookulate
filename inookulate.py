@@ -333,7 +333,13 @@ def cli_main():
     print('You own the following books:')
     cli_print_library(library)
 
-    id = int(input('ID to download: '))
+    id = None
+    while id is None:
+        try:
+            id = int(input('ID to download: '))
+        except ValueError:
+            print('ID must be an integer. Please try again')
+
     try:
         download_book(token, id)
     except ServerError as e:
