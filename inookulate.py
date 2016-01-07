@@ -11,22 +11,53 @@ import zipfile
 import shutil
 import getpass
 
-cookies = http.cookiejar.MozillaCookieJar('cookies')
+class NotAuthenticatedError(Exception):
+    pass
 
-def prepare_request(request):
+class AuthenticationToken:
+    def __init__(self, filename='cookies'):
+        self.authenticated = False
+        self.cookies = http.cookiejar.MozillaCookieJar(filename)
+
+    def save(self, filename=None):
+        """Save the authentication token to a file.
+
+        Uses the filename passed to the constructor if no filename is given.
+        """
+        self.cookies.save(ignore_discard=True, filename=filename)
+
+    def load(self, filename=None):
+        """Load an authentication token from the given file.
+
+        Uses the filename passed to the constructor if no filename is given.
+        Returns a boolean indicating whether or not a valid token was loaded.
+        """
+        try:
+            self.cookies.load(ignore_discard=True, filename=filename)
+            self.authenticated = True
+        except OSError:
+            pass
+
+        return self.authenticated
+
+def prepare_request(request, token=None):
     """Add headers to the given Request object to impersonate a NOOK device."""
     request.add_header('Referer',
             'bnereader.barnesandnoble.com')
     request.add_header('User-Agent',
             'BN ClientAPI Java/1.0.0.0 (bravo;bravo;1.5.0;P001000021)')
 
-    cookies.add_cookie_header(request)
+    if token is not None:
+        if not token.authenticated:
+            raise NotAuthenticatedError
 
-def authenticate(email, password):
+        token.cookies.add_cookie_header(request)
+
+def authenticate(token, email, password):
     """Use the given username and password to authenticate to BN.
 
-    Return boolean indicating success. If successful, authentication cookies
-    are saved in the global CookieJar named cookies.
+    Returns boolean indicating success. If successful, the given authentication
+    token is updated to reflect the new state.
     """
     url = 'https://cart2.barnesandnoble.com/services/service.asp?service=1'
     post_values = [
@@ -47,24 +78,27 @@ def authenticate(email, password):
         status = bool(int(root.find(status_path).text))
 
         if status:
-            cookies.extract_cookies(response, request)
+            token.authenticated = True
+            token.cookies.extract_cookies(response, request)
 
         return status
 
-def log_in_with_prompt():
-    """Complete a full login flow, prompting the user for credentials."""
-    authenticated = False
-    while not authenticated:
+def log_in_with_prompt(token):
+    """Complete a full login flow, prompting the user for credentials.
+
+    Will either update the given token to an authenticated state or throw an
+    exception.
+    """
+    while not token.authenticated:
         email = input('Email: ')
         password = getpass.getpass('Password: ')
 
-        authenticated = authenticate(email, password)
-        if not authenticated:
+        if not authenticate(token, email, password):
             print('Login failed. Please try again')
 
-    cookies.save(ignore_discard=True)
+    token.save()
 
-def get_cchash():
+def get_cchash(token):
     """Retrieve the user's credit card hash used for EPUB encryption.
 
     Requires login. Returned string is the Base64-encoded hash, suitable
@@ -80,7 +114,7 @@ def get_cchash():
 
     post_data = urllib.parse.urlencode(post_values).encode()
     request = urllib.request.Request(url, post_data)
-    prepare_request(request)
+    prepare_request(request, token)
 
     with urllib.request.urlopen(request) as response:
         root = ElementTree.fromstring(response.read())
@@ -90,7 +124,7 @@ def get_cchash():
 
         return cchash
 
-def get_library():
+def get_library(token):
     """Retrieve a listing of all the user's purchased books.
 
     Requires login. Returns a dictionary with delivery IDs as keys and book
@@ -134,7 +168,7 @@ def get_library():
     
     request = urllib.request.Request(url, post_data)
     request.add_header('Content-Type', 'application/vnd.syncml+xml')
-    prepare_request(request)
+    prepare_request(request, token)
 
     with urllib.request.urlopen(request) as response:
         root = ElementTree.fromstring(response.read())
@@ -152,7 +186,7 @@ def get_library():
 class License:
     pass
 
-def get_license(id):
+def get_license(token, id):
     """Retrieve information including the EPUB URL and rights.xml of a book.
 
     Requires login. Returns a License object containing the string properties
@@ -162,7 +196,7 @@ def get_license(id):
     url = url.format(id)
 
     request = urllib.request.Request(url)
-    prepare_request(request)
+    prepare_request(request, token)
 
     with urllib.request.urlopen(request) as response:
         root = ElementTree.fromstring(response.read())
@@ -177,33 +211,35 @@ def get_license(id):
 
         return license
 
-def save_file(url, id, path):
+def save_file(token, url, id, path):
     """Download book from given URL with given ID to given path."""
     request = urllib.request.Request(url)
     request.add_header('BN-Environment', 'Backend')
     request.add_header('BN-Item-ID', str(id))
-    prepare_request(request)
+    prepare_request(request, token)
 
     with urllib.request.urlopen(request) as response, open(path, 'wb') as out:
         shutil.copyfileobj(response, out);
 
-try:
-    cookies.load(ignore_discard=True)
-except OSError:
-    print('Please log in to retrieve a book')
-    log_in_with_prompt()
 
-library = get_library();
+token = AuthenticationToken('cookies')
+if not token.load():
+    print('Please log in to retrieve a book')
+    log_in_with_prompt(token)
+
+print('Fetching library...')
+library = get_library(token);
 
 print('You own the following books:')
-for id, title in sorted(library.items(), key=lambda x: x[1]):
+for id, title in sorted(library.items(), key=lambda x: x[1].lower()):
     print('{:<11d} {}'.format(id, title))
 
 id = int(input('ID to download: '))
-license = get_license(id)
+license = get_license(token, id)
 
 path = str(id) + '.epub'
-save_file(license.download_url, id, path)
+print('Saving {} as {}...'.format(license.download_url, path))
+save_file(token, license.download_url, id, path)
 
 with zipfile.ZipFile(path, 'a') as epub:
     if 'META-INF/encryption.xml' in epub.namelist():
