@@ -90,7 +90,7 @@ def get_cchash():
 
         return cchash
 
-def get_listing():
+def get_library():
     """Retrieve a listing of all the user's purchased books.
 
     Requires login. Returns a dictionary with delivery IDs as keys and book
@@ -193,7 +193,7 @@ except OSError:
     print('Please log in to retrieve a book')
     log_in_with_prompt()
 
-library = get_listing();
+library = get_library();
 
 print('You own the following books:')
 for id, title in sorted(library.items(), key=lambda x: x[1]):
