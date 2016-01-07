@@ -115,10 +115,12 @@ class AuthenticationToken:
 
 def prepare_request(request, token=None):
     """Add headers to the given Request object to impersonate a NOOK device."""
-    request.add_header('Referer',
-            'bnereader.barnesandnoble.com')
-    request.add_header('User-Agent',
-            'BN ClientAPI Java/1.0.0.0 (bravo;bravo;1.5.0;P001000021)')
+    request.add_header(
+        'Referer',
+        'bnereader.barnesandnoble.com')
+    request.add_header(
+        'User-Agent',
+        'BN ClientAPI Java/1.0.0.0 (bravo;bravo;1.5.0;P001000021)')
 
     if token is not None:
         token.cookies.add_cookie_header(request)
