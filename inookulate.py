@@ -15,11 +15,14 @@ import sys
 class NotAuthenticatedError(Exception):
     pass
 
+
 class ServerError(Exception):
     pass
 
+
 class License:
     pass
+
 
 class AuthenticationToken:
     auth_url = 'https://cart2.barnesandnoble.com/services/service.asp?service=1'
@@ -107,6 +110,9 @@ class AuthenticationToken:
 
         return self.authenticated
 
+
+### Backend functions ###
+
 def prepare_request(request, token=None):
     """Add headers to the given Request object to impersonate a NOOK device."""
     request.add_header('Referer',
@@ -117,18 +123,6 @@ def prepare_request(request, token=None):
     if token is not None:
         token.cookies.add_cookie_header(request)
 
-def log_in_with_prompt(token):
-    """Complete a full login flow, prompting the user for credentials.
-
-    Will either update the given token to an authenticated state or throw an
-    exception.
-    """
-    while not token.authenticated:
-        email = input('Email: ')
-        password = getpass.getpass('Password: ')
-
-        if not token.authenticate(email, password):
-            print('Login failed. Please try again')
 
 def get_cchash(token):
     """Retrieve the user's credit card hash used for EPUB encryption.
@@ -158,6 +152,7 @@ def get_cchash(token):
         cchash = root.find(cchash_path).text
 
         return cchash
+
 
 def get_library(token):
     """Retrieve a listing of all the user's purchased books.
@@ -221,6 +216,7 @@ def get_library(token):
 
         return books
 
+
 def get_license(token, id):
     """Retrieve information including the EPUB URL and rights.xml of a book.
 
@@ -253,6 +249,7 @@ def get_license(token, id):
 
         return license
 
+
 def save_file(token, url, id, path):
     """Download book from given URL with given ID to given path.
 
@@ -268,6 +265,7 @@ def save_file(token, url, id, path):
 
     with urllib.request.urlopen(request) as response, open(path, 'wb') as out:
         shutil.copyfileobj(response, out);
+
 
 def download_book(token, id, path=None):
     """High-level function to download the book with the given delivery ID.
@@ -297,21 +295,53 @@ def download_book(token, id, path=None):
             print('EPUB is not encrypted')
 
 
-token = AuthenticationToken('cookies')
-if not token.authenticated:
-    print('Please log in to retrieve a book')
-    log_in_with_prompt(token)
+### CLI functions ###
 
-print('Fetching library...')
-library = get_library(token);
+def cli_authenticate_interactive(token):
+    """Complete a full login flow, prompting the user for credentials.
 
-print('You own the following books:')
-for id, title in sorted(library.items(), key=lambda x: x[1].lower()):
-    print('{:<11d} {}'.format(id, title))
+    Will either update the given token to an authenticated state or throw an
+    exception.
+    """
+    print('Please log in with your Barnes & Noble account.')
 
-id = int(input('ID to download: '))
-try:
-    download_book(token, id)
-except ServerError as e:
-    print('Server returned error: {}'.format(e))
-    sys.exit(1)
+    while not token.authenticated:
+        email = input('Email: ')
+        password = getpass.getpass('Password: ')
+
+        if not token.authenticate(email, password):
+            print('Login failed. Please try again')
+
+
+def cli_print_library(library):
+    """Print the ID and name of each book in the given library, sorted by name.
+
+    library should be as returned from get_library().
+    """
+    for id, title in sorted(library.items(), key=lambda x: x[1].lower()):
+        print('{:<11d} {}'.format(id, title))
+
+
+def cli_main():
+    token = AuthenticationToken('cookies')
+    if not token.authenticated:
+        cli_authenticate_interactive(token)
+
+    print('Fetching library...')
+    library = get_library(token);
+
+    print('You own the following books:')
+    cli_print_library(library)
+
+    id = int(input('ID to download: '))
+    try:
+        download_book(token, id)
+    except ServerError as e:
+        print('Server returned error: {}'.format(e))
+        return 1
+
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(cli_main())
