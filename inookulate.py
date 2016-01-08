@@ -25,9 +25,6 @@ class License:
 
 
 class AuthenticationToken:
-    auth_url = 'https://cart2.barnesandnoble.com/services/service.asp?service=1'
-    auth_state_path = "./stateData/data[@name='signedIn']"
-
     def __init__(self, filename='cookies'):
         self.authenticated = False
         self.cookies = http.cookiejar.MozillaCookieJar(filename)
@@ -39,6 +36,7 @@ class AuthenticationToken:
         Returns boolean indicating success. If successful, the authentication
         token is updated with the new data.
         """
+        url = 'https://cart2.barnesandnoble.com/services/service.asp?service=1'
         post_values = [
             ('emailAddress', email),
             ('UIAction', 'signIn'),
@@ -47,13 +45,14 @@ class AuthenticationToken:
             ]
 
         post_data = urllib.parse.urlencode(post_values).encode()
-        request = urllib.request.Request(self.auth_url, post_data)
+        request = urllib.request.Request(url, post_data)
         prepare_request(request, self)
 
         with urllib.request.urlopen(request) as response:
             root = ElementTree.fromstring(response.read())
 
-            status = bool(int(root.find(self.auth_state_path).text))
+            state_path = "./stateData/data[@name='signedIn']"
+            status = bool(int(root.find(state_path).text))
 
             if status:
                 self.authenticated = True
@@ -69,21 +68,25 @@ class AuthenticationToken:
         you should not need to call this. It will automatically be called as
         needed to keep the authenticated variable up-to-date.
         """
-        post_values = [
-            ('stage', 'signIn'),
-            ]
+        # We do a cchash request because I haven't found a dedicated endpoint
+        # that reliably tells us whether or not a set of cookies is valid. The
+        # NOOK device I'm working with caches credentials and resends them
+        # every time, which is obviously not optimal. cchash is probably a
+        # fairly low-impact query on BN's end, so I don't feel too bad about
+        # the extra request.
+        #
+        # (If you think you've found a way to get authentication status by
+        # omitting the UIAction and credential fields from a login request,
+        # don't bother--it gives false positives when BN expires the tokens
+        # on their end.)
 
-        post_data = urllib.parse.urlencode(post_values).encode()
-        request = urllib.request.Request(self.auth_url, post_data)
-        prepare_request(request, self)
+        self.authenticated = True
+        try:
+            get_cchash(self)
+        except NotAuthenticatedError:
+            self.authenticated = False
 
-        with urllib.request.urlopen(request) as response:
-            root = ElementTree.fromstring(response.read())
-
-            status = bool(int(root.find(self.auth_state_path).text))
-
-            self.authenticated = status
-            return status
+        return self.authenticated
 
     def save(self, filename=None):
         """Save the authentication token to a file.
@@ -130,11 +133,10 @@ def get_cchash(token):
     """Retrieve the user's credit card hash used for EPUB encryption.
 
     Requires login. Returned string is the Base64-encoded hash, suitable
-    for use with tools like ignobleepub.
+    for use with tools like ignobleepub. Throws NotAuthenticatedError based on
+    server response, not token status, so can also be used as a check to see
+    if a token is valid.
     """
-    if not token.authenticated:
-        raise NotAuthenticatedError
-
     url = 'https://cart4.barnesandnoble.com/services/service.aspx?service=1'
     post_values = [
         ('schema', '1'),
@@ -149,6 +151,10 @@ def get_cchash(token):
 
     with urllib.request.urlopen(request) as response:
         root = ElementTree.fromstring(response.read())
+
+        error_path = "./errors/error[@id='300_FEEngine']"
+        if root.find(error_path) is not None:
+            raise NotAuthenticatedError
 
         cchash_path = './payMethod/ccHash'
         cchash = root.find(cchash_path).text
