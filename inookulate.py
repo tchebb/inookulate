@@ -12,7 +12,8 @@ import shutil
 import getpass
 import sys
 import argparse
-import os.path
+
+default_auth_save_path = './bnauth.tok'
 
 class NotAuthenticatedError(Exception):
     pass
@@ -390,7 +391,7 @@ def cli_parse_args():
     parser.add_argument(
         '-t', '--token-path',
         help='cached authentication token path (default: %(default)s)',
-        default='~/.bnauth')
+        default=default_auth_save_path)
 
     subparsers = parser.add_subparsers(help='operation', dest='operation')
     subparsers.required = True
@@ -436,7 +437,7 @@ def cli_parse_args():
 def cli_main():
     args = cli_parse_args()
 
-    token = AuthenticationToken(os.path.expanduser(args.token_path))
+    token = AuthenticationToken(args.token_path)
 
     if args.operation == 'login':
         if args.email is not None and arg.password is not None:
