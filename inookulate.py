@@ -11,6 +11,8 @@ import zipfile
 import shutil
 import getpass
 import sys
+import argparse
+import os.path
 
 class NotAuthenticatedError(Exception):
     pass
@@ -25,7 +27,7 @@ class License:
 
 
 class AuthenticationToken:
-    def __init__(self, filename='cookies'):
+    def __init__(self, filename):
         self.authenticated = False
         self.cookies = http.cookiejar.MozillaCookieJar(filename)
         self.load()
@@ -305,7 +307,7 @@ def download_book(token, id, path=None):
 
 ### CLI functions ###
 
-def cli_authenticate_interactive(token):
+def cli_authenticate_interactive(token, email_arg=None, password_arg=None):
     """Complete a full login flow, prompting the user for credentials.
 
     Will either update the given token to an authenticated state or throw an
@@ -313,48 +315,163 @@ def cli_authenticate_interactive(token):
     """
     print('Please log in with your Barnes & Noble account.')
 
+    token.authenticated = False
     while not token.authenticated:
-        email = input('Email: ')
-        password = getpass.getpass('Password: ')
+        if email_arg is None:
+            email = input('Email: ')
+        else:
+            email = email_arg
+
+        if password_arg is None:
+            password = getpass.getpass('Password: ')
+        else:
+            password = password_arg
 
         if not token.authenticate(email, password):
             print('Login failed. Please try again')
 
 
-def cli_print_library(library):
+def cli_print_library(library, machine_readable):
     """Print the ID and name of each book in the given library, sorted by name.
 
     library should be as returned from get_library().
     """
     for id, title in sorted(library.items(), key=lambda x: x[1].lower()):
-        print('{:<11d} {}'.format(id, title))
+        if machine_readable:
+            print('{},{}'.format(id, title))
+        else:
+            print('{:<11d} {}'.format(id, title))
 
 
-def cli_main():
-    token = AuthenticationToken('cookies')
-    if not token.authenticated:
-        cli_authenticate_interactive(token)
-
-    print('Fetching library...')
-    library = get_library(token);
-
-    print('You own the following books:')
-    cli_print_library(library)
-
-    id = None
-    while id is None:
-        try:
-            id = int(input('ID to download: '))
-        except ValueError:
-            print('ID must be an integer. Please try again')
-
+def cli_download_book(token, id):
     try:
         download_book(token, id)
     except ServerError as e:
         print('Server returned error: {}'.format(e))
-        return 1
+        return False
 
-    return 0
+    print('Download complete')
+
+    return True
+
+
+def cli_prompt_id(token):
+    """Prompt the user for a book ID to download.
+
+    Returns the chosen ID as an integer."""
+    id = None
+    while id is None:
+        cmd = input("Book ID to download (or 'L' for library listing): ")
+
+        if cmd.upper() == 'L':
+            print('Fetching library...')
+            library = get_library(token);
+
+            print('You own the following books:')
+            cli_print_library(library, False)
+
+            continue
+
+        try:
+            id = int(cmd)
+        except ValueError:
+            print('ID must be an integer. Please try again')
+
+    return id
+
+
+def cli_parse_args():
+    parser = argparse.ArgumentParser(
+        description="Download NOOK books from the Barnes & Noble cloud")
+    parser.add_argument(
+        '-s', '--script',
+        help='machine-readable, non-interactive operation',
+        action='store_true')
+    parser.add_argument(
+        '-t', '--token-path',
+        help='cached authentication token path (default: %(default)s)',
+        default='~/.bnauth')
+
+    subparsers = parser.add_subparsers(help='operation', dest='operation')
+    subparsers.required = True
+
+    parser_login = subparsers.add_parser(
+        'login', help='retrieve an authentication token')
+    parser_login.add_argument(
+        '-e', '--email',
+        help='email address for login')
+    parser_login.add_argument(
+        '-p', '--password',
+        help='password for login')
+
+    parser_library = subparsers.add_parser(
+        'library', help='list all purchased NOOK books')
+
+    parser_download = subparsers.add_parser(
+        'download', help='download a NOOK book')
+    parser_download.add_argument(
+        '-i', '--id',
+        help='book ID to download', type=int)
+
+    parser_cchash = subparsers.add_parser(
+        'cchash', help='retrieve the credit card hash used for EPUB encryption')
+
+    # Display help if no arguments are given
+    if len(sys.argv) <= 1:
+        parser.print_help()
+        parser.exit(1)
+
+    args = parser.parse_args()
+
+    if args.script:
+        if (args.operation == 'login' and
+                (args.email is None or args.password is None)):
+            parser.error('please provide both -e and -p to log in in script mode')
+        elif args.operation == 'download' and args.id is None:
+            parser.error('please provide -i to download a book in script mode')
+
+    return args
+
+
+def cli_main():
+    args = cli_parse_args()
+
+    token = AuthenticationToken(os.path.expanduser(args.token_path))
+
+    if args.operation == 'login':
+        if args.email is not None and arg.password is not None:
+            if not token.authenticate(args.email, args.password):
+                print('Login failed')
+                return 1
+        else:
+            cli_authenticate_interactive(token, args.email, args.password)
+
+        print('Login succeeded')
+        return 0
+
+    # All operations after this require login, so do it if we're allowed.
+    if not token.authenticated:
+        if args.script:
+            print('Cached authentication is invalid. Please login again')
+            return 1
+        else:
+            cli_authenticate_interactive(token)
+
+    if args.operation == 'library':
+        cli_print_library(get_library(token), args.script)
+        return 0
+
+    if args.operation == 'download':
+        if args.id is None:
+            args.id = cli_prompt_id(token)
+
+        cli_download_book(token, args.id)
+
+        return 0
+
+    if args.operation == 'cchash':
+        print(get_cchash(token))
+        return 0
 
 
 if __name__ == '__main__':
