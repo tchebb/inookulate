@@ -27,7 +27,7 @@ import getpass
 import sys
 import argparse
 
-default_auth_save_path = './bnauth.tok'
+DEFAULT_AUTH_SAVE_PATH = './bnauth.tok'
 
 class NotAuthenticatedError(Exception):
     pass
@@ -289,7 +289,7 @@ def save_file(token, url, id, path):
     prepare_request(request, token)
 
     with urllib.request.urlopen(request) as response, open(path, 'wb') as out:
-        shutil.copyfileobj(response, out);
+        shutil.copyfileobj(response, out)
 
 
 def download_book(token, id, path=None):
@@ -380,7 +380,7 @@ def cli_prompt_id(token):
 
         if cmd.upper() == 'L':
             print('Fetching library...')
-            library = get_library(token);
+            library = get_library(token)
 
             print('You own the following books:')
             cli_print_library(library, False)
@@ -405,7 +405,7 @@ def cli_parse_args():
     parser.add_argument(
         '-t', '--token-path',
         help='cached authentication token path (default: %(default)s)',
-        default=default_auth_save_path)
+        default=DEFAULT_AUTH_SAVE_PATH)
 
     subparsers = parser.add_subparsers(help='operation', dest='operation')
     subparsers.required = True
@@ -454,7 +454,7 @@ def cli_main():
     token = AuthenticationToken(args.token_path)
 
     if args.operation == 'login':
-        if args.email is not None and arg.password is not None:
+        if args.email is not None and args.password is not None:
             if not token.authenticate(args.email, args.password):
                 print('Login failed')
                 return 1
