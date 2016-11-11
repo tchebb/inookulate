@@ -68,6 +68,13 @@ class AuthenticationToken:
         with urllib.request.urlopen(request) as response:
             root = ElementTree.fromstring(response.read())
 
+            errors = root.findall("./errors/error")
+            if errors:
+                for error in errors:
+                    print("Got error while logging in: {}".format(error.text))
+
+                return False
+
             state_path = "./stateData/data[@name='signedIn']"
             status = bool(int(root.find(state_path).text))
 
