@@ -131,7 +131,7 @@ class AuthenticationToken:
         return self.authenticated
 
 
-### Backend functions ###
+# Backend functions
 
 def prepare_request(request, token=None):
     """Add headers to the given Request object to impersonate a NOOK device."""
@@ -295,11 +295,11 @@ def save_file(token, url, id, path):
 def download_book(token, id, path=None):
     """High-level function to download the book with the given delivery ID.
 
-    Uses get_license() and save_file() to save the given book at the given path.
-    If the book is an encrypted EPUB, rights.xml is added to the archive. If
-    a path is not given, one is automatically determined based on the title and
-    the format of the book. This is the recommended usage. Returns the path to
-    which the book was downloaded.
+    Uses get_license() and save_file() to save the given book at the given
+    path. If the book is an encrypted EPUB, rights.xml is added to the
+    archive. If a path is not given, one is automatically determined based
+    on the title and the format of the book. This is the recommended usage.
+    Returns the path to which the book was downloaded.
     """
     license = get_license(token, id)
 
@@ -320,7 +320,7 @@ def download_book(token, id, path=None):
             print('EPUB is not encrypted')
 
 
-### CLI functions ###
+# CLI functions
 
 def cli_authenticate_interactive(token, email_arg=None, password_arg=None):
     """Complete a full login flow, prompting the user for credentials.
@@ -429,7 +429,7 @@ def cli_parse_args():
         help='book ID to download', type=int)
 
     parser_cchash = subparsers.add_parser(
-        'cchash', help='retrieve the credit card hash used for EPUB encryption')
+        'cchash', help='retrieve the credit card hash used to encrypt EPUBs')
 
     # Display help if no arguments are given
     if len(sys.argv) <= 1:
@@ -441,7 +441,7 @@ def cli_parse_args():
     if args.script:
         if (args.operation == 'login' and
                 (args.email is None or args.password is None)):
-            parser.error('please provide both -e and -p to log in in script mode')
+            parser.error('please provide -e and -p to log in in script mode')
         elif args.operation == 'download' and args.id is None:
             parser.error('please provide -i to download a book in script mode')
 
